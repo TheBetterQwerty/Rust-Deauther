@@ -1,4 +1,4 @@
-# 🛑 Rust Deauth Packet Sender
+# 🦀 Rust Deauth Packet Sender
 
 This project is a simple Rust-based tool that sends deauthentication packets to a specified target device on a wireless network. It is designed for educational and testing purposes only (e.g., auditing your own network). The script uses the `pcap` crate to send raw packets and supports spoofing the sender MAC address.
 
