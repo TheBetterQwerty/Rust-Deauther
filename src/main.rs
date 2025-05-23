@@ -59,7 +59,7 @@ fn print_help(prog_name: &String) {
     println!("Options:");
     println!("  -t <target_mac>       Set the target MAC address (the one to be deauthenticated)");
     println!("  -s <source_mac>       Set the source MAC address (usually the AP/router)");
-    println!("  -i <interface>        Set the wireless interface in monitor mode (e.g., wlan0mon)");
+    //println!("  -i <interface>        Set the wireless interface in monitor mode (e.g., wlan0mon)");
     println!("  --packets  <n>        Set the number of packets to be sent (e.g., 10)");
     println!("  --interval <seconds>  Set the delay between each deauth packet (default: 1)");
     println!("  -h, --help            Show this help message and exit");
